@@ -288,14 +288,6 @@ func (k Keeper) instantiate(ctx sdk.Context, codeID uint64, creator, admin sdk.A
 	// prepare querier
 	querier := k.newQueryHandler(ctx, contractAddress)
 
-	// instantiate wasm contract
-	gas := k.runtimeGasForContract(ctx)
-	res, gasUsed, err := k.wasmVM.Instantiate(codeInfo.CodeHash, env, info, initMsg, prefixStore, cosmwasmAPI, querier, k.gasMeter(ctx), gas, costJSONDeserialization)
-	k.consumeRuntimeGas(ctx, gasUsed)
-	if err != nil {
-		return nil, nil, sdkerrors.Wrap(types.ErrInstantiateFailed, err.Error())
-	}
-
 	// persist instance first
 	createdAt := types.NewAbsoluteTxPosition(ctx)
 	contractInfo := types.NewContractInfo(codeID, creator, admin, label, createdAt)
@@ -319,6 +311,14 @@ func (k Keeper) instantiate(ctx sdk.Context, codeID uint64, creator, admin sdk.A
 	k.addToContractCodeSecondaryIndex(ctx, contractAddress, historyEntry)
 	k.appendToContractHistory(ctx, contractAddress, historyEntry)
 	k.storeContractInfo(ctx, contractAddress, &contractInfo)
+
+	// instantiate wasm contract
+	gas := k.runtimeGasForContract(ctx)
+	res, gasUsed, err := k.wasmVM.Instantiate(codeInfo.CodeHash, env, info, initMsg, prefixStore, cosmwasmAPI, querier, k.gasMeter(ctx), gas, costJSONDeserialization)
+	k.consumeRuntimeGas(ctx, gasUsed)
+	if err != nil {
+		return nil, nil, sdkerrors.Wrap(types.ErrInstantiateFailed, err.Error())
+	}
 
 	ctx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeInstantiate,
