@@ -5,7 +5,11 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -560,12 +564,16 @@ func StoreReflectContract(t testing.TB, ctx sdk.Context, keepers TestKeepers) Ex
 	return StoreExampleContract(t, ctx, keepers, "./testdata/reflect.wasm")
 }
 
+func StoreFactoryContract(t testing.TB, ctx sdk.Context, keepers TestKeepers) ExampleContract {
+	return StoreExampleContract(t, ctx, keepers, "https://github.com/jhernandezb/factory-test/releases/download/v0.1.0/factory_test.wasm")
+}
+
 func StoreExampleContract(t testing.TB, ctx sdk.Context, keepers TestKeepers, wasmFile string) ExampleContract {
 	anyAmount := sdk.NewCoins(sdk.NewInt64Coin("denom", 1000))
 	creator, _, creatorAddr := keyPubAddr()
 	fundAccounts(t, ctx, keepers.AccountKeeper, keepers.BankKeeper, creatorAddr, anyAmount)
 
-	wasmCode, err := os.ReadFile(wasmFile)
+	wasmCode, err := GetContractBytes(wasmFile)
 	require.NoError(t, err)
 
 	codeID, _, err := keepers.ContractKeeper.Create(ctx, creatorAddr, wasmCode, nil)
@@ -757,4 +765,41 @@ func keyPubAddr() (crypto.PrivKey, crypto.PubKey, sdk.AccAddress) {
 	pub := key.PubKey()
 	addr := sdk.AccAddress(pub.Address())
 	return key, pub, addr
+}
+
+type storeCache struct {
+	sync.Mutex
+	contracts map[string][]byte
+}
+
+var contractsCache = storeCache{contracts: make(map[string][]byte)}
+
+func GetContractBytes(contract string) ([]byte, error) {
+	contractsCache.Lock()
+	bz, found := contractsCache.contracts[contract]
+	contractsCache.Unlock()
+	if found {
+		return bz, nil
+	}
+	contractsCache.Lock()
+	defer contractsCache.Unlock()
+	if strings.HasPrefix(contract, "https://") {
+		resp, err := http.Get(contract)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		bz, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		var err error
+		bz, err = os.ReadFile(contract)
+		if err != nil {
+			return nil, err
+		}
+	}
+	contractsCache.contracts[contract] = bz
+	return bz, nil
 }
