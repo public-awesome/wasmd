@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"io"
 	"math"
@@ -108,10 +109,12 @@ func restoreV1(_ sdk.Context, k *Keeper, compressedCode []byte) error {
 		return errorsmod.Wrap(types.ErrCreateFailed, err.Error())
 	}
 
+	sha256 := sha256.Sum256(wasmCode)
+
 	// FIXME: check which codeIDs the checksum matches??
 	_, err = k.wasmVM.StoreCodeUnchecked(wasmCode)
 	if err != nil {
-		return errorsmod.Wrap(types.ErrCreateFailed, err.Error())
+		return errorsmod.Wrap(types.ErrCreateFailed, err.Error()+" checksum: "+hex.EncodeToString(sha256[:]))
 	}
 	return nil
 }
